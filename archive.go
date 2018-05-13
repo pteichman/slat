@@ -7,24 +7,9 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"sort"
+	"strconv"
 )
-
-type user struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-type channel struct {
-	Name string `json:"name"`
-}
-
-type event struct {
-	Ts      string `json:"ts"`
-	Type    string `json:"type"`
-	Subtype string `json:"subtype"`
-	User    string `json:"user"`
-	Text    string `json:"text"`
-}
 
 // ExportArchiveFile writes the messages from a Slack archive .zip file
 // to a series of .json files in outdir.
@@ -45,8 +30,11 @@ func ExportArchiveFile(outdir, archive string) error {
 		usernames[u.ID] = u.Name
 	}
 
+	chanEvents := make(map[string][]event)
+
 	for _, f := range z.File {
-		if !isChannelLog(f.Name) {
+		name := channelName(f.Name)
+		if name == "" {
 			continue
 		}
 
@@ -55,18 +43,39 @@ func ExportArchiveFile(outdir, archive string) error {
 			return fmt.Errorf("loading events: %s: %s", f.Name, err)
 		}
 
-		subdir, filename := path.Split(f.Name)
-		if err := os.MkdirAll(path.Join(outdir, subdir), os.ModePerm); err != nil {
-			return err
-		}
-		out, err := os.Create(path.Join(outdir, subdir, filename))
+		chanEvents[name] = append(chanEvents[name], events...)
+	}
+
+	if err := os.MkdirAll(outdir, os.ModePerm); err != nil {
+		return err
+	}
+
+	for name, events := range chanEvents {
+		sort.Slice(events, func(i, j int) bool {
+			a, err := strconv.ParseFloat(events[i].Ts, 64)
+			if err != nil {
+				panic("a")
+			}
+			b, err := strconv.ParseFloat(events[j].Ts, 64)
+			if err != nil {
+				panic("b")
+			}
+			return a < b
+		})
+
+		filename := path.Join(outdir, name+".json")
+
+		out, err := os.Create(filename)
 		if err != nil {
 			return err
 		}
 		defer out.Close()
 
-		if err := json.NewEncoder(out).Encode(events); err != nil {
-			return err
+		enc := json.NewEncoder(out)
+		for _, event := range events {
+			if err := enc.Encode(event); err != nil {
+				return err
+			}
 		}
 
 		out.Close()
@@ -75,10 +84,14 @@ func ExportArchiveFile(outdir, archive string) error {
 	return nil
 }
 
-var chanFilenameRe = regexp.MustCompile(`[^/]/[0-9]{4}-[0-9]{2}-[0-9]{2}\.json`)
+var chanFilenameRe = regexp.MustCompile(`^([^/]+)/[0-9]{4}-[0-9]{2}-[0-9]{2}\.json`)
 
-func isChannelLog(filename string) bool {
-	return chanFilenameRe.MatchString(filename)
+func channelName(filename string) string {
+	m := chanFilenameRe.FindStringSubmatch(filename)
+	if len(m) == 0 {
+		return ""
+	}
+	return m[1]
 }
 
 func loadUsers(z *zip.ReadCloser, filename string) ([]user, error) {
@@ -139,25 +152,6 @@ func loadEvents(f *zip.File, usernames map[string]string) ([]event, error) {
 	}
 
 	return events, nil
-}
-
-var (
-	chanRe = regexp.MustCompile(`\x{003c}#.*?\|(.*?)\x{003e}`)
-	userRe = regexp.MustCompile(`\x{003c}@(.*?)\x{003e}`)
-	linkRe = regexp.MustCompile(`\x{003c}(https?://.*?)(\|.*)?\x{003e}`)
-)
-
-func cleanText(usernames map[string]string, text string) string {
-	text = chanRe.ReplaceAllString(text, "$1")
-
-	text = userRe.ReplaceAllStringFunc(text, func(match string) string {
-		m := userRe.FindStringSubmatch(match)
-		return "@" + usernames[m[1]]
-	})
-
-	text = linkRe.ReplaceAllString(text, "$1")
-
-	return text
 }
 
 func findfile(z *zip.ReadCloser, filename string) (*zip.File, error) {

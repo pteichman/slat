@@ -24,4 +24,10 @@ func main() {
 			log.Printf("Exporting %s: %s", archive, err)
 		}
 	}
+
+	if token := os.Getenv("SLACK_API_TOKEN"); token != "" {
+		if err := slat.ExportHistory(*outdir, token); err != nil {
+			log.Printf("Exporting: %s", err)
+		}
+	}
 }
