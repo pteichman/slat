@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"sort"
@@ -13,7 +14,10 @@ import (
 	"github.com/nlopes/slack"
 )
 
+// ExportHistory updates the slat archive in outdir to include any new
+// messages since the archive was last updated.
 func ExportHistory(outdir, token string) error {
+	log.Printf("Catching up: %s", outdir)
 	api := slack.New(token)
 
 	channels, err := api.GetChannels(false)
@@ -72,6 +76,11 @@ func exportChannelHistory(outdir string, api *slack.Client, channel slack.Channe
 		}
 		return a < b
 	})
+
+	log.Printf("Updating: %s: from %s: %d new", channel.Name, oldest, len(msgs))
+	if len(msgs) == 0 {
+		return nil
+	}
 
 	out, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, os.ModePerm)
 	if err != nil {

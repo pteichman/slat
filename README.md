@@ -1,19 +1,30 @@
 # slat
-Slack tail / Slack archive tool
+Slack archive tool
 
-Some early design notes:
+This tool maintains a JSON archive of a Slack workspace's public channels.
+The archive can be seeded with a full export from Slack, so you will get
+your full message history even on a free plan.
 
-This tool provides JSON output from Slack history, either an archive file (export)
-or from the history API. It is designed to keep a full archive up to date, so
-after a dump from an export you can run it with an API key and archive new messages.
+slat is designed to run from cron and update the archive incrementally, so
+as long as you don't run out of free messages between cron runs, you will
+retain all of your messages.
 
-The output directory is filled with one file per month per channel. These files
-contain newline separated JSON objects, one message per object.
+## Installation
 
-It is designed to run from cron.
+You can build the slat command with "go get".
+
+    $ go get github.com/pteichman/slat/cmd/slat
 
 ## Usage
 
-    slat "My Slack export Jan 1 2018.zip"
+To seed an archive directory with an export from Slack, run slat on the
+archive zip file:
 
-    SLACK_API_TOKEN="xoxp..." slat
+    $ slat -o /path/to/archive "My Slack export Jan 1 2018.zip"
+
+To update that archive with new messages, you will need a Slack API token.
+You can create one that works with slat here: https://api.slack.com/custom-integrations/legacy-tokens
+
+Pass that token in the process environment, like this:
+
+    $ SLACK_API_TOKEN="xoxp..." slat -o /path/to/archive

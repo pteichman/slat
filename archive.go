@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"regexp"
@@ -14,12 +15,14 @@ import (
 // ExportArchiveFile writes the messages from a Slack archive .zip file
 // to a series of .json files in outdir.
 func ExportArchiveFile(outdir, archive string) error {
+	log.Printf("Opening %s", archive)
 	z, err := zip.OpenReader(archive)
 	if err != nil {
 		return err
 	}
 	defer z.Close()
 
+	log.Printf("Loading users.json")
 	users, err := loadUsers(z, "users.json")
 	if err != nil {
 		return fmt.Errorf("loading users.json: %s", err)
@@ -43,11 +46,8 @@ func ExportArchiveFile(outdir, archive string) error {
 			return fmt.Errorf("loading events: %s: %s", f.Name, err)
 		}
 
+		log.Printf("Loading events: %s: found %d", f.Name, len(events))
 		chanEvents[name] = append(chanEvents[name], events...)
-	}
-
-	if err := os.MkdirAll(outdir, os.ModePerm); err != nil {
-		return err
 	}
 
 	for name, events := range chanEvents {
@@ -65,6 +65,7 @@ func ExportArchiveFile(outdir, archive string) error {
 
 		filename := path.Join(outdir, name+".json")
 
+		log.Printf("Writing events: %s: total %d", filename, len(events))
 		out, err := os.Create(filename)
 		if err != nil {
 			return err
@@ -107,26 +108,6 @@ func loadUsers(z *zip.ReadCloser, filename string) ([]user, error) {
 	defer r.Close()
 
 	var ret []user
-	if err := json.NewDecoder(r).Decode(&ret); err != nil {
-		return nil, err
-	}
-
-	return ret, nil
-}
-
-func loadChannels(z *zip.ReadCloser, filename string) ([]channel, error) {
-	f, err := findfile(z, filename)
-	if err != nil {
-		return nil, err
-	}
-
-	r, err := f.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-
-	var ret []channel
 	if err := json.NewDecoder(r).Decode(&ret); err != nil {
 		return nil, err
 	}
