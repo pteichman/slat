@@ -1,0 +1,6 @@
+# github.com/gorilla/websocket v1.2.0
+## explicit
+github.com/gorilla/websocket
+# github.com/nlopes/slack v0.2.0
+## explicit
+github.com/nlopes/slack
