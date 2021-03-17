@@ -3,6 +3,7 @@ package slat
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nlopes/slack"
+	"github.com/slack-go/slack"
 )
 
 // ExportHistory updates the slat archive in outdir to include any new
@@ -20,7 +21,7 @@ func ExportHistory(outdir, token string) error {
 	log.Printf("Catching up: %s", outdir)
 	api := slack.New(token)
 
-	channels, err := api.GetChannels(false)
+	channels, err := getChannels(api)
 	if err != nil {
 		return err
 	}
@@ -35,10 +36,35 @@ func ExportHistory(outdir, token string) error {
 	return nil
 }
 
+func getChannels(api *slack.Client) ([]slack.Channel, error) {
+	params := slack.GetConversationsParameters{
+		ExcludeArchived: "true",
+		Types:           []string{"public_channel"},
+	}
+
+	var ret []slack.Channel
+
+	channels, nextCursor, err := api.GetConversations(&params)
+	if err != nil {
+		return nil, fmt.Errorf("GetConversations: %w", err)
+	}
+	ret = append(ret, channels...)
+
+	for nextCursor != "" {
+		channels, nextCursor, err = api.GetConversations(&params)
+		if err != nil {
+			return nil, fmt.Errorf("GetConversations: %w", err)
+		}
+		ret = append(ret, channels...)
+	}
+
+	return channels, nil
+}
+
 func exportChannelHistory(outdir string, api *slack.Client, channel slack.Channel) error {
 	users, err := api.GetUsers()
 	if err != nil {
-		return err
+		return fmt.Errorf("GetUsers: %w", err)
 	}
 
 	usernames := make(map[string]string)
@@ -108,11 +134,16 @@ func msgEvent(usernames map[string]string, msg slack.Message) *event {
 	}
 }
 
-func getChannelHistory(api *slack.Client, chanID string, oldest string, latest string) (*slack.History, error) {
-	params := slack.HistoryParameters{Oldest: oldest, Latest: latest, Count: 1000}
+func getChannelHistory(api *slack.Client, chanID string, oldest string, latest string) (*slack.GetConversationHistoryResponse, error) {
+	params := slack.GetConversationHistoryParameters{
+		ChannelID: chanID,
+		Oldest:    oldest,
+		Latest:    latest,
+		Limit:     1000,
+	}
 
 	for {
-		history, err := api.GetChannelHistory(chanID, params)
+		history, err := api.GetConversationHistory(&params)
 		if rate, ok := err.(*slack.RateLimitedError); ok {
 			time.Sleep(rate.RetryAfter)
 			continue
